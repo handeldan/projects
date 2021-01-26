@@ -1,0 +1,62 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: etl
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+            - name: gcloud-credentials
+              secret:
+                secretName: cloudsql-instance-credentials
+          containers:
+          - name: etl
+            image: gcr.io/twigadms/etl:latest
+            imagePullPolicy: Always
+            env:
+              # Secrets
+              - name: GOOGLE_APPLICATION_CREDENTIALS
+                value: "/secrets/credentials/credentials.json"
+              - name: REDIS_PASSWORD
+                value: ""
+              - name: REDIS_HOST
+                valueFrom:
+                  secretKeyRef:
+                    name: app-env-configs
+                    key: redis_host
+              - name: REDIS_PORT
+                valueFrom:
+                  secretKeyRef:
+                    name: app-env-configs
+                    key: redis_port
+              - name: POSTGRES_USER
+                valueFrom:
+                  secretKeyRef:
+                    name: app-env-configs
+                    key: db_user
+              - name: POSTGRES_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: app-env-configs
+                    key: db_password
+              - name: SLACK_API_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: etl-secrets
+                    key: slack_api_token
+              # General configs
+              - name: CONFIG_FILE
+                value: "/opt/etl/config.json"
+              - name: EXTRACTION_DIR
+                value: "/opt/etl/files/"
+              - name: LOG_LEVEL
+                value: "INFO"
+            volumeMounts:
+              - name: gcloud-credentials
+                mountPath: /secrets/credentials
+                readOnly: true
+          restartPolicy: Never

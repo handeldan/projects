@@ -1,0 +1,30 @@
+image: google/cloud-sdk:alpine
+
+pipelines:
+  default:
+    - step:
+        name: Build & Test.
+        script:
+            - echo "Test pipeline"
+  branches:
+    master:
+      - step:
+          name: Deploy to Production
+          image: google/cloud-sdk:alpine
+          deployment: test
+          caches:
+            - docker
+          script:
+            # Read & decode authentication file. -> Instructions here: https://confluence.atlassian.com/bitbucket/deploy-to-google-cloud-900820342.html
+            - export TAG=$(git log -1 --pretty=%h)
+            - gcloud components install kubectl -q
+            - echo $GCLOUD_API_KEYFILE | base64 -d  > ./gcloud-api-key.json
+            - gcloud auth activate-service-account --key-file gcloud-api-key.json
+            - gcloud config set project $GCLOUD_PROJECT_PROD
+            - gcloud container clusters get-credentials $GCLOUD_CLUSTER_PROD --zone=$GCLOUD_ZONE_PROD --project $GCLOUD_PROJECT_PROD
+            - docker build -f Dockerfile --no-cache --rm=false -t gcr.io/$GCLOUD_PROJECT_PROD/etl:$TAG  -t gcr.io/$GCLOUD_PROJECT_PROD/etl:latest .
+            - gcloud docker -- push gcr.io/$GCLOUD_PROJECT_PROD/etl:$TAG
+            - gcloud docker -- push gcr.io/$GCLOUD_PROJECT_PROD/etl:latest
+            - kubectl apply -f cronjob.yaml
+          services:
+            - docker
